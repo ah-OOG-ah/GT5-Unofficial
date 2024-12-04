@@ -39,7 +39,7 @@ public class FiretubeRenderer extends TileEntitySpecialRenderer {
     private static final int POS_W = 3; // three floats for a XYZ
     private static final int UV_W = 2; // two floats for a UV
     private static final int STRIDE = POS_W + UV_W + TYPE_W;
-    // 6 faces, two tris per, 3 vertices per, five floats per
+    // 6 faces, two tris per, 3 vertices per, six floats per
     // Every float here could probably be shrunk to 2 bits, but that seems overkill for a single small model.
     private static final float[] steamBoxTris = new float[6 * 2 * 3 * STRIDE];
     private static final int VERTEX_COUNT = steamBoxTris.length / STRIDE;
@@ -92,76 +92,7 @@ public class FiretubeRenderer extends TileEntitySpecialRenderer {
             this.bindTexture(TextureMap.locationBlocksTexture);
 
             if (!isShaderInit) {
-
-                final IIcon waterFlow = Blocks.flowing_water.getBlockTextureFromSide(2);
-                final float minU = waterFlow.getMinU();
-                final float maxU = waterFlow.getMaxU();
-                final float minV = waterFlow.getMinV();
-                final float maxV = waterFlow.getMaxV();
-
-                final float dU = maxU - minU;
-                final float dV = maxV - minV;
-
-                // Read the .obj to a float array
-                // Also ID them - 0 is water, 1 is steam, 2+ is a steam particle plane
-                int i = 0;
-                int primitiveType = 0;
-                for (final GroupObject go : steamBoxObj.groupObjects) {
-                    for (final Face f : go.faces) {
-                        i = addTri(f.vertices, f.textureCoordinates, 0, i, primitiveType);
-                        i = addTri(f.vertices, f.textureCoordinates, 2, i, primitiveType);
-                    }
-                    ++primitiveType;
-                }
-
-                /**
-                 * Each steam particle spawns, grows to max size as it floats to the top, then gets hangs around at the
-                 * outlet before disappearing. Since each steam particle is merely placed on a quad, and the height
-                 * tracks with the age, we need only send the XY of each particle, plus a Z to indicate which plane it's
-                 * on. 24 bytes per particle, however, would be overkill - that's half a vertex worth, and if there's,
-                 * say, 8 particles on each plane it means that's equivalent to 24 extra vertices, the same as the
-                 * planes themselves. Using one byte for each coord is much cheaper.
-                 *
-                 * Further packing to 4 bits per Z is possible, but requires vertices to be sent in pairs to maintain
-                 * byte alignment. 3 bits is also possible, but requires packing 8 vertices.
-                 */
-
-                steamProgram = new ShaderProgram(
-                    "gregtech",
-                    "shaders/firetube.vert.glsl",
-                    "shaders/firetube.frag.glsl");
-                steamProgram.use();
-
-                // Register attributes
-                aPos = steamProgram.getAttribLocation("pos");
-                aUV = steamProgram.getAttribLocation("uvIn");
-
-                // Register uniforms
-                uBlockAtlas = steamProgram.getUniformLocation("u_BlockAtlas");
-                uModelProjection = steamProgram.getUniformLocation("u_ModelProjection");
-                //uTime = steamProgram.getUniformLocation("u_Time");
-                uHeight = steamProgram.getUniformLocation("u_Height");
-                uminUV = steamProgram.getUniformLocation("u_minUV");
-                udUV = steamProgram.getUniformLocation("u_dUV");
-
-                // Create + bind vertex buffer
-                vertBuf = GL15.glGenBuffers();
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertBuf);
-                // Make a 3x-sized buffer to act as a vec3 position input to the shader.
-                final ByteBuffer vertexIDData = BufferUtils.createByteBuffer(VERTEX_COUNT * BYTES_P_FLOAT * STRIDE);
-                for (i = 0; i < VERTEX_COUNT * STRIDE; i++) {
-                    vertexIDData.putFloat(i * BYTES_P_FLOAT, steamBoxTris[i]);
-                }
-                GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertexIDData, GL15.GL_STATIC_DRAW);
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-
-                // Load constant uniforms
-                GL20.glUniform1i(uBlockAtlas, OpenGlHelper.defaultTexUnit - GL13.GL_TEXTURE0);
-                GL20.glUniform2f(uminUV, minU, minV);
-                GL20.glUniform2f(udUV, dU, dV);
-
-                ShaderProgram.clear();
-
+                initShader();
                 isShaderInit = true;
             }
 
@@ -197,6 +128,77 @@ public class FiretubeRenderer extends TileEntitySpecialRenderer {
 
             ShaderProgram.clear();
         }
+    }
+
+    private static void initShader() {
+        final IIcon waterFlow = Blocks.flowing_water.getBlockTextureFromSide(2);
+        final float minU = waterFlow.getMinU();
+        final float maxU = waterFlow.getMaxU();
+        final float minV = waterFlow.getMinV();
+        final float maxV = waterFlow.getMaxV();
+
+        final float dU = maxU - minU;
+        final float dV = maxV - minV;
+
+        // Read the .obj to a float array
+        // Also ID them - 0 is water, 1 is steam, 2+ is a steam particle plane
+        int i = 0;
+        int primitiveType = 0;
+        for (final GroupObject go : steamBoxObj.groupObjects) {
+            for (final Face f : go.faces) {
+                i = addTri(f.vertices, f.textureCoordinates, 0, i, primitiveType);
+                i = addTri(f.vertices, f.textureCoordinates, 2, i, primitiveType);
+            }
+            ++primitiveType;
+        }
+
+        /**
+         * Each steam particle spawns, grows to max size as it floats to the top, then gets hangs around at the
+         * outlet before disappearing. Since each steam particle is merely placed on a quad, and the height
+         * tracks with the age, we need only send the XY of each particle, plus a Z to indicate which plane it's
+         * on. 24 bytes per particle, however, would be overkill - that's half a vertex worth, and if there's,
+         * say, 8 particles on each plane it means that's equivalent to 24 extra vertices, the same as the
+         * planes themselves. Using one byte for each coord is much cheaper.
+         *
+         * Further packing to 4 bits per Z is possible, but requires vertices to be sent in pairs to maintain
+         * byte alignment. 3 bits is also possible, but requires packing 8 vertices.
+         */
+
+        steamProgram = new ShaderProgram(
+            "gregtech",
+            "shaders/firetube.vert.glsl",
+            "shaders/firetube.frag.glsl");
+        steamProgram.use();
+
+        // Register attributes
+        aPos = steamProgram.getAttribLocation("pos");
+        aUV = steamProgram.getAttribLocation("uvIn");
+
+        // Register uniforms
+        uBlockAtlas = steamProgram.getUniformLocation("u_BlockAtlas");
+        uModelProjection = steamProgram.getUniformLocation("u_ModelProjection");
+        //uTime = steamProgram.getUniformLocation("u_Time");
+        uHeight = steamProgram.getUniformLocation("u_Height");
+        uminUV = steamProgram.getUniformLocation("u_minUV");
+        udUV = steamProgram.getUniformLocation("u_dUV");
+
+        // Create + bind vertex buffer
+        vertBuf = GL15.glGenBuffers();
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertBuf);
+        // Make a 3x-sized buffer to act as a vec3 position input to the shader.
+        final ByteBuffer vertexIDData = BufferUtils.createByteBuffer(VERTEX_COUNT * BYTES_P_FLOAT * STRIDE);
+        for (i = 0; i < VERTEX_COUNT * STRIDE; i++) {
+            vertexIDData.putFloat(i * BYTES_P_FLOAT, steamBoxTris[i]);
+        }
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertexIDData, GL15.GL_STATIC_DRAW);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+
+        // Load constant uniforms
+        GL20.glUniform1i(uBlockAtlas, OpenGlHelper.defaultTexUnit - GL13.GL_TEXTURE0);
+        GL20.glUniform2f(uminUV, minU, minV);
+        GL20.glUniform2f(udUV, dU, dV);
+
+        ShaderProgram.clear();
     }
 
     public static class Block extends net.minecraft.block.Block {

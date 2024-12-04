@@ -128,4 +128,6 @@ dependencies {
 
     // Speeds up mod identification and loading in dev
     runtimeOnlyNonPublishable(rfg.deobf("CoreTweaks:CoreTweaks:0.3.3.2"))
+    runtimeOnlyNonPublishable('com.github.GTNewHorizons:StorageDrawers:1.13.9-GTNH:dev')
+    //runtimeOnlyNonPublishable('com.github.GTNewHorizons:Railcraft:9.15.11:dev')
 }
